@@ -1,0 +1,16 @@
+{
+  "salary_1": 155000.0,
+  "salary_2": 109000.0,
+  "annual_savings_amount": 80000.0,
+  "savings_rate": null,
+  "income_growth_rate": 0.03,
+  "mean_return": 0.052199999999999996,
+  "volatility": 0.1664,
+  "num_simulations": 10000,
+  "seed": 42,
+  "actuals": {
+    "0": 160000.0,
+    "1": 190000.0,
+    "2": 220000.0
+  }
+}
