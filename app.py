@@ -2,8 +2,6 @@
 app.py - Streamlit Interactive GUI for FIRE Model (Type-Safe Pipeline)
 Run via: streamlit run app.py
 """
-import os
-import json
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -66,7 +64,8 @@ if "initialized" not in st.session_state:
         if loaded_runner.annual_savings_amount is not None:
             st.session_state["annual_savings"] = float(loaded_runner.annual_savings_amount)
             st.session_state["savings_rate_pct"] = (
-                        float(loaded_runner.annual_savings_amount) / total_income * 100.0) if total_income > 0 else 30.0
+                (float(loaded_runner.annual_savings_amount) / total_income * 100.0) if total_income > 0 else 30.0
+            )
             st.session_state["contrib_mode"] = "Fixed Annual Amount ($)"
         elif loaded_runner.savings_rate is not None:
             st.session_state["savings_rate_pct"] = float(loaded_runner.savings_rate) * 100.0
@@ -100,24 +99,24 @@ if "initialized" not in st.session_state:
 
 def on_contrib_mode_change():
     total_income = float(st.session_state.salary_1 + st.session_state.salary_2)
-    if total_income <= 0:
-        return
 
     if st.session_state.contrib_mode == "Savings Rate (%)":
-        st.session_state.savings_rate_pct = min(100.0,
-                                                max(0.0, (float(st.session_state.annual_savings) / total_income) * 100.0))
+        if total_income > 0:
+            pct = (float(st.session_state.annual_savings) / total_income) * 100.0
+            st.session_state.savings_rate_pct = float(np.clip(pct, -50.0, 90.0))
+        else:
+            st.session_state.savings_rate_pct = 0.0
     else:
         st.session_state.annual_savings = total_income * (float(st.session_state.savings_rate_pct) / 100.0)
 
 
 def on_salary_change():
     total_income = float(st.session_state.salary_1 + st.session_state.salary_2)
-    if total_income <= 0:
-        return
 
     if st.session_state.contrib_mode == "Fixed Annual Amount ($)":
-        st.session_state.savings_rate_pct = min(100.0,
-                                                max(0.0, (float(st.session_state.annual_savings) / total_income) * 100.0))
+        if total_income > 0:
+            pct = (float(st.session_state.annual_savings) / total_income) * 100.0
+            st.session_state.savings_rate_pct = float(np.clip(pct, -50.0, 90.0))
     else:
         st.session_state.annual_savings = total_income * (float(st.session_state.savings_rate_pct) / 100.0)
 
@@ -125,12 +124,12 @@ def on_salary_change():
 # --- SIDEBAR CONTROL PANEL ---
 st.sidebar.header("💾 Persistence")
 
-st.sidebar.header("1. Household & Contributions")
+st.sidebar.header("1. Household & Contributions / Drawdown")
 salary_1 = float(st.sidebar.number_input("Salary 1 ($)", step=5_000.0, key="salary_1", on_change=on_salary_change))
 salary_2 = float(st.sidebar.number_input("Salary 2 ($)", step=5_000.0, key="salary_2", on_change=on_salary_change))
 
 contrib_mode = st.sidebar.radio(
-    "Contribution Mode",
+    "Contribution / Withdrawal Mode",
     ["Fixed Annual Amount ($)", "Savings Rate (%)"],
     key="contrib_mode",
     on_change=on_contrib_mode_change
@@ -140,31 +139,45 @@ total_gross = salary_1 + salary_2
 
 if contrib_mode == "Fixed Annual Amount ($)":
     annual_savings = float(st.sidebar.number_input(
-        "Annual Savings ($)",
+        "Annual Savings / Withdrawal ($)",
+        min_value=-500_000.0,
+        max_value=1_000_000.0,
         step=2_500.0,
         key="annual_savings",
-        on_change=on_salary_change
+        on_change=on_salary_change,
+        help="Negative values simulate annual retirement withdrawals."
     ))
     savings_rate = None
     implied_pct = (annual_savings / total_gross * 100.0) if total_gross > 0 else 0.0
-    st.sidebar.caption(f"Equivalent Savings Rate: **{implied_pct:.1f}%** of gross")
+
+    if annual_savings >= 0:
+        st.sidebar.caption(f"Equivalent Savings Rate: **{implied_pct:.1f}%** of gross")
+    else:
+        st.sidebar.caption(f"Annual Withdrawal: **${abs(annual_savings):,.0f}/yr**")
 else:
     savings_rate_pct = float(st.sidebar.slider(
-        "Savings Rate (%)",
-        min_value=1.0,
+        "Savings / Withdrawal Rate (%)",
+        min_value=-50.0,
         max_value=90.0,
         key="savings_rate_pct",
-        on_change=on_salary_change
+        on_change=on_salary_change,
+        help="Negative percentages simulate withdrawing a proportion of income."
     ))
     savings_rate = savings_rate_pct / 100.0
     annual_savings = None
     implied_amt = total_gross * savings_rate
-    st.sidebar.caption(f"Equivalent Annual Contribution: **${implied_amt:,.0f}/yr** (scales with wage growth)")
 
-wage_growth = float(st.sidebar.slider("Annual Wage Growth (%)", min_value=0.0, max_value=10.0, key="wage_growth")) / 100.0
+    if savings_rate >= 0:
+        st.sidebar.caption(f"Equivalent Annual Contribution: **${implied_amt:,.0f}/yr** (scales with wage growth)")
+    else:
+        st.sidebar.caption(f"Equivalent Annual Withdrawal: **${abs(implied_amt):,.0f}/yr** (scales with wage growth)")
+
+wage_growth = float(
+    st.sidebar.slider("Annual Wage Growth (%)", min_value=0.0, max_value=10.0, key="wage_growth")) / 100.0
 
 st.sidebar.header("2. Market Parameters")
-mean_return = float(st.sidebar.slider("Expected Real Return (%)", min_value=1.0, max_value=12.0, key="mean_return")) / 100.0
+mean_return = float(
+    st.sidebar.slider("Expected Real Return (%)", min_value=1.0, max_value=12.0, key="mean_return")) / 100.0
 volatility = float(st.sidebar.slider("Annual Volatility (%)", min_value=0.0, max_value=30.0, key="volatility")) / 100.0
 
 st.sidebar.header("3. Simulation Engine")

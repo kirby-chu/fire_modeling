@@ -35,6 +35,7 @@ class FIRERunner:
     ) -> Tuple[pd.DataFrame, pd.DataFrame]:
         """
         Runs Monte Carlo simulation on a quarterly basis using Geometric Brownian Motion.
+        Supports both positive savings (accumulation) and negative amounts (decumulation/retirement).
         """
         n_sims = int(num_simulations if num_simulations is not None else self.num_simulations)
         rnd_seed = int(seed if seed is not None else self.seed)
@@ -63,7 +64,7 @@ class FIRERunner:
         for step in range(1, remaining_steps + 1):
             q_curr = start_step + step
 
-            # Contribution Mode Logic
+            # Contribution Mode Logic (Supports positive contributions or negative withdrawals)
             if self.savings_rate is not None:
                 current_q_salary = total_gross * ((1.0 + q_wage_growth) ** (q_curr - 1))
                 contribution = (current_q_salary * float(self.savings_rate)) / 4.0
@@ -76,7 +77,11 @@ class FIRERunner:
             else:
                 returns = 1.0 + q_mean_return
 
-            sim_paths[:, step] = (sim_paths[:, step - 1] * returns) + contribution
+            # Compound returns and add net contribution/withdrawal
+            next_state = (sim_paths[:, step - 1] * returns) + contribution
+
+            # Floor portfolio at $0 to correctly represent bankruptcy rather than unconstrained debt
+            sim_paths[:, step] = np.maximum(0.0, next_state)
 
         # Build results Summary DataFrame with EXPLICIT FLOAT DTYPES to prevent casting errors
         q_steps = np.arange(total_quarters + 1, dtype=np.int64)
